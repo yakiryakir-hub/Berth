@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds, signs, and notarizes Moorage.app, then packages it as Moorage.dmg —
+# Builds, signs, and notarizes Berth.app, then packages it as Berth.dmg —
 # the file for the GitHub release / download button. Mounts as a normal disk
 # image with a shortcut to /Applications: the standard drag-to-install flow.
 #
@@ -11,11 +11,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/Moorage.app"
-DMG_PATH="$DIST_DIR/Moorage.dmg"
+APP_BUNDLE="$DIST_DIR/Berth.app"
+DMG_PATH="$DIST_DIR/Berth.dmg"
 STAGING_DIR="$DIST_DIR/dmg-staging"
 
-echo "==> Building Moorage.app..."
+echo "==> Building Berth.app..."
 "$ROOT_DIR/Scripts/build-app.sh"
 
 if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
@@ -31,9 +31,9 @@ mkdir -p "$STAGING_DIR"
 cp -R "$APP_BUNDLE" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 
-echo "==> Building Moorage.dmg..."
+echo "==> Building Berth.dmg..."
 rm -f "$DMG_PATH"
-hdiutil create -volname "Moorage" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+hdiutil create -volname "Berth" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
 rm -rf "$STAGING_DIR"
 
 # The dmg wrapper isn't itself notarized/stapled — Gatekeeper checks the .app

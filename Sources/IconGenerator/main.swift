@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-// Draws the Moorage app icon: a cleat hitch — a steel horn cleat whose two
+// Draws the Berth app icon: a cleat hitch — a steel horn cleat whose two
 // horns stick straight out to the sides, with a white rope tied in a clean
 // figure-eight over the centre, on deep navy. Modelled on the reference mark:
 // round rope loops, subtle twist lines, a thin navy outline separating rope

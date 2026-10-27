@@ -28,6 +28,9 @@ public enum PTP {
         case moveObject = 0x1019
         case copyObject = 0x101A
         case getPartialObject = 0x101B
+        case getDevicePropDesc = 0x1014
+        case getDevicePropValue = 0x1015
+        case setDevicePropValue = 0x1016
         // MTP extensions
         case getObjectPropsSupported = 0x9801
         case getObjectPropDesc = 0x9802

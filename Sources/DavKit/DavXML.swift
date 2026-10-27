@@ -7,14 +7,20 @@ enum DavXML {
 
     static func escape(_ s: String) -> String {
         var out = ""
-        out.reserveCapacity(s.count)
-        for c in s {
-            switch c {
-            case "&": out += "&amp;"
-            case "<": out += "&lt;"
-            case ">": out += "&gt;"
-            case "\"": out += "&quot;"
-            default: out.append(c)
+        out.reserveCapacity(s.utf8.count)
+        for scalar in s.unicodeScalars {
+            switch scalar.value {
+            case 0x26: out += "&amp;"
+            case 0x3C: out += "&lt;"
+            case 0x3E: out += "&gt;"
+            case 0x22: out += "&quot;"
+            // XML 1.0 forbids most control characters and U+FFFE/FFFF even
+            // escaped. A single one in a device-controlled filename made the
+            // whole multistatus unparsable, hiding the entire directory.
+            case 0x9, 0xA, 0xD, 0x20...0xD7FF, 0xE000...0xFFFD, 0x10000...0x10FFFF:
+                out.unicodeScalars.append(scalar)
+            default:
+                continue
             }
         }
         return out

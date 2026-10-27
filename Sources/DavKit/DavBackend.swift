@@ -25,6 +25,7 @@ public enum DavError: Error, Sendable {
     case conflict          // 409 (e.g. parent missing)
     case insufficientStorage // 507
     case unavailable       // 503 (device gone/busy)
+    case notSupported      // 501 (device lacks the operation)
 }
 
 /// The tree DavServer serves. Paths are arrays of decoded segments; [] is the

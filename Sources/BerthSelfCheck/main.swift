@@ -3,7 +3,7 @@ import MTPKit
 import DavKit
 
 /// Terminal test harness: protocol codec round-trips, no device required.
-/// `MoorageSelfCheck scan` instead lists MTP devices currently visible on USB.
+/// `BerthSelfCheck scan` instead lists MTP devices currently visible on USB.
 /// Exit 0 = all pass.
 
 if CommandLine.arguments.contains("scan") {
@@ -89,12 +89,12 @@ if CommandLine.arguments.contains("probe") {
             // root, then delete it, printing raw results.
             if CommandLine.arguments.contains("delete") {
                 let storage = ids[0]
-                let temp = FileManager.default.temporaryDirectory.appendingPathComponent("moorage-delete-test.txt")
+                let temp = FileManager.default.temporaryDirectory.appendingPathComponent("berth-delete-test.txt")
                 try Data("delete me".utf8).write(to: temp)
                 do {
                     let handle = try await device.sendObject(
                         storageID: storage, parentHandle: PTP.rootParentHandle,
-                        name: "moorage-delete-test.txt", fileURL: temp, size: 9, modified: Date()
+                        name: "berth-delete-test.txt", fileURL: temp, size: 9, modified: Date()
                     )
                     print("probe: uploaded test file, handle 0x\(String(handle, radix: 16))")
                     do {
@@ -140,7 +140,7 @@ if CommandLine.arguments.contains("--serve-demo") {
     Task.detached {
         await backend.seed(path: ["Internal Storage"], data: nil)
         await backend.seed(path: ["Internal Storage", "documents"], data: nil)
-        await backend.seed(path: ["Internal Storage", "documents", "hello.txt"], data: Data("hello from moorage\n".utf8))
+        await backend.seed(path: ["Internal Storage", "documents", "hello.txt"], data: Data("hello from berth\n".utf8))
         await backend.seed(path: ["Internal Storage", "documents", "book.azw3"], data: Data(repeating: 0x42, count: 2_000_000))
         await backend.seed(path: ["Internal Storage", "music"], data: nil)
         seedSemaphore.signal()
@@ -349,6 +349,88 @@ check(syncHTTP("GET", base.appendingPathComponent("Storage/newdir/moved.bin")).s
 
 let wrongToken = syncHTTP("PROPFIND", URL(string: "http://127.0.0.1:\(davServer.port)/wrong-token/")!, headers: ["Depth": "0"])
 check(wrongToken.status == 404, "unknown token rejected")
+
+// MARK: - Hardening checks (raw sockets: things URLSession won't send)
+
+func openClient(port: UInt16) -> Int32? {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    guard fd >= 0 else { return nil }
+    var addr = sockaddr_in()
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_port = port.bigEndian
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+    let rc = withUnsafePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        }
+    }
+    if rc != 0 { close(fd); return nil }
+    return fd
+}
+
+/// Sends raw bytes and returns whatever the server answers within `wait`.
+func rawExchange(port: UInt16, send payload: Data, wait: Int32 = 400_000) -> String {
+    guard let fd = openClient(port: port) else { return "" }
+    defer { close(fd) }
+    var tv = timeval(tv_sec: 0, tv_usec: wait)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+    _ = payload.withUnsafeBytes { send(fd, $0.baseAddress, payload.count, 0) }
+    var out = Data()
+    var buf = [UInt8](repeating: 0, count: 4096)
+    while true {
+        let n = recv(fd, &buf, buf.count, 0)
+        if n <= 0 { break }
+        out.append(contentsOf: buf[0..<n])
+    }
+    return String(decoding: out, as: UTF8.self)
+}
+
+print("== DavKit hardening ==")
+let docsPath = "/\(davServer.token)/Storage/docs"
+
+var flood = "GET \(docsPath)/a.txt HTTP/1.1\r\nHost: x\r\n"
+for i in 0..<150 { flood += "X-H\(i): v\r\n" }
+flood += "\r\n"
+check(rawExchange(port: davServer.port, send: Data(flood.utf8)).hasPrefix("HTTP/1.1 400"), "header flood rejected with 400")
+
+let hugeChunk = "PUT \(docsPath)/chunk.bin HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nFFFFFFFF\r\nabc"
+_ = rawExchange(port: davServer.port, send: Data(hugeChunk.utf8), wait: 300_000)
+check(syncHTTP("OPTIONS", base).status == 200, "server healthy after absurd chunk size")
+check(syncHTTP("GET", base.appendingPathComponent("Storage/docs/chunk.bin")).status == 404, "absurd chunk PUT stored nothing")
+
+let weirdURL = base.appendingPathComponent("Storage/docs").appendingPathComponent("bad\u{01}name.txt")
+_ = syncHTTP("PUT", weirdURL, body: Data("x".utf8))
+let weirdList = syncHTTP("PROPFIND", base.appendingPathComponent("Storage/docs/"), headers: ["Depth": "1"])
+check(weirdList.status == 207 && XMLParser(data: weirdList.body).parse(), "PROPFIND XML stays valid with a control character in a name")
+
+let srcURL = base.appendingPathComponent("Storage/docs/src.txt")
+let dstURL = base.appendingPathComponent("Storage/docs/dst.txt")
+_ = syncHTTP("PUT", srcURL, body: Data("NEW".utf8))
+_ = syncHTTP("PUT", dstURL, body: Data("OLD".utf8))
+let overwriteMove = syncHTTP("MOVE", srcURL, headers: ["Destination": dstURL.absoluteString])
+check(overwriteMove.status == 204, "MOVE overwrite 204")
+check(syncHTTP("GET", dstURL).body == Data("NEW".utf8), "MOVE overwrite delivers the moved content")
+let afterMove = syncHTTP("PROPFIND", base.appendingPathComponent("Storage/docs/"), headers: ["Depth": "1"])
+check(!String(decoding: afterMove.body, as: UTF8.self).contains(".berth-replaced-"), "MOVE overwrite leaves no set-aside file behind")
+
+let src2URL = base.appendingPathComponent("Storage/docs/src2.txt")
+_ = syncHTTP("PUT", src2URL, body: Data("OTHER".utf8))
+let refusedMove = syncHTTP("MOVE", src2URL, headers: ["Destination": dstURL.absoluteString, "Overwrite": "F"])
+check(refusedMove.status == 412, "MOVE with Overwrite:F onto an existing file -> 412")
+check(syncHTTP("GET", dstURL).body == Data("NEW".utf8), "refused MOVE leaves the destination intact")
+
+var idleClients = [Int32]()
+for _ in 0..<40 { if let fd = openClient(port: davServer.port) { idleClients.append(fd) } }
+usleep(500_000)
+var refusedCount = 0
+for fd in idleClients {
+    var probe: UInt8 = 0
+    if recv(fd, &probe, 1, MSG_DONTWAIT) == 0 { refusedCount += 1 }
+}
+idleClients.forEach { close($0) }
+check(refusedCount >= 1, "connection cap closes excess connections")
+usleep(500_000)
+check(syncHTTP("OPTIONS", base).status == 200, "server serves normally after the connection flood")
 
 davServer.stop()
 

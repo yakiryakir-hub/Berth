@@ -6,6 +6,9 @@ final class SocketIO {
     let fd: Int32
     private var buffer = Data()
     private static let readChunk = 64 << 10
+    /// Reused for every recv; allocating and zeroing 64 KB per call made
+    /// multi-GB transfers burn CPU for nothing.
+    private var scratch = [UInt8](repeating: 0, count: SocketIO.readChunk)
 
     enum IOError: Error {
         case closed
@@ -28,10 +31,9 @@ final class SocketIO {
     }
 
     private func fill() throws {
-        var chunk = [UInt8](repeating: 0, count: Self.readChunk)
-        let n = recv(fd, &chunk, chunk.count, 0)
+        let n = scratch.withUnsafeMutableBytes { recv(fd, $0.baseAddress, $0.count, 0) }
         if n > 0 {
-            buffer.append(contentsOf: chunk[0..<n])
+            scratch.withUnsafeBufferPointer { buffer.append($0.baseAddress!, count: n) }
         } else if n == 0 {
             throw IOError.closed
         } else {
@@ -58,9 +60,10 @@ final class SocketIO {
         while buffer.count < n {
             try fill()
         }
-        let out = buffer.prefix(n)
-        buffer.removeFirst(n)
-        return Data(out)
+        let end = buffer.startIndex + n
+        let out = buffer.subdata(in: buffer.startIndex..<end)
+        buffer.removeSubrange(buffer.startIndex..<end)
+        return out
     }
 
     func write(_ data: Data) throws {

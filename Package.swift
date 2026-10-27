@@ -3,16 +3,25 @@
 import PackageDescription
 
 let package = Package(
-    name: "Moorage",
+    name: "Berth",
     platforms: [
         .macOS(.v26)
     ],
     targets: [
-        // MTP/PTP protocol over IOUSBHost. No UI, no server.
+        // Thin C shim over Apple's IOUSBLib (IOUSBInterfaceInterface), the
+        // user-space USB API libusb uses on macOS.
+        .target(
+            name: "CBerthUSB",
+            linkerSettings: [
+                .linkedFramework("IOKit"),
+                .linkedFramework("CoreFoundation"),
+            ]
+        ),
+        // MTP/PTP protocol over IOUSBLib. No UI, no server.
         .target(
             name: "MTPKit",
+            dependencies: ["CBerthUSB"],
             linkerSettings: [
-                .linkedFramework("IOUSBHost"),
                 .linkedFramework("IOKit"),
             ]
         ),
@@ -23,7 +32,7 @@ let package = Package(
         ),
         // Menu bar app: device watching, WebDAV serving, mounting.
         .executableTarget(
-            name: "Moorage",
+            name: "Berth",
             dependencies: ["MTPKit", "DavKit"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -36,7 +45,7 @@ let package = Package(
         ),
         // Terminal test harness: MTP codec + WebDAV server tests, no device.
         .executableTarget(
-            name: "MoorageSelfCheck",
+            name: "BerthSelfCheck",
             dependencies: ["MTPKit", "DavKit"]
         ),
         // Renders the app icon in code, per size. No image assets.

@@ -60,12 +60,19 @@ public enum MTPDeviceLocator {
     }
 
     /// All MTP-capable interfaces currently in the IO registry.
-    public static func connectedDevices() -> [MTPDeviceRef] {
+    ///
+    /// A failed scan (IOServiceGetMatchingServices returning non-success) is
+    /// reported distinctly from "no devices present". The caller must not treat
+    /// a failed scan as an empty device list: during USB re-enumeration the
+    /// registry transiently fails to enumerate, and acting on that as "the
+    /// device is gone" used to force-unmount a live volume and close the MTP
+    /// session seconds after a healthy mount.
+    public static func scan() -> (devices: [MTPDeviceRef], failed: Bool) {
         var found = [MTPDeviceRef]()
         var iterator: io_iterator_t = 0
         let matching = IOServiceMatching("IOUSBHostInterface")
         guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
-            return []
+            return ([], true)
         }
         defer { IOObjectRelease(iterator) }
 
@@ -75,7 +82,11 @@ public enum MTPDeviceLocator {
                 if !found.contains(ref) { found.append(ref) }
             }
         }
-        return found
+        return (found, false)
+    }
+
+    public static func connectedDevices() -> [MTPDeviceRef] {
+        scan().devices
     }
 
     /// The io_service_t for the MTP interface of the device with the given URL
@@ -127,6 +138,61 @@ public enum MTPDeviceLocator {
             vendorID: vendorID, productID: productID,
             locationID: UInt32(truncatingIfNeeded: locationID)
         )
+    }
+
+    // MARK: - Android devices that aren't offering MTP
+
+    /// USB vendor IDs of common Android makers.
+    private static let androidVendorIDs: Set<Int> = [
+        0x18D1, // Google
+        0x04E8, // Samsung
+        0x2717, // Xiaomi
+        0x2A70, // OnePlus
+        0x22B8, // Motorola
+        0x054C, // Sony
+        0x1004, // LG
+        0x12D1, // Huawei
+        0x0BB4, // HTC
+        0x0B05, // ASUS
+        0x22D9, // OPPO
+        0x2D95, // vivo
+        0x29A9, // Nothing
+    ]
+
+    /// Names of Android devices that are plugged in but expose neither MTP nor
+    /// mass storage: phone locked, or USB set to "Charging only". Lets the app
+    /// say "choose File transfer" instead of silently showing nothing.
+    /// Samsung's external SSDs share the vendor ID, so anything with a
+    /// mass-storage interface is skipped.
+    public static func androidDevicesWithoutMTP() -> [String] {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOUSBHostDevice"), &iterator) == KERN_SUCCESS else {
+            return []
+        }
+        defer { IOObjectRelease(iterator) }
+
+        var names = [String]()
+        while case let device = IOIteratorNext(iterator), device != 0 {
+            defer { IOObjectRelease(device) }
+            guard let vendor: Int = property(device, "idVendor"), androidVendorIDs.contains(vendor) else { continue }
+
+            var hasMTPOrStorage = false
+            var children: io_iterator_t = 0
+            if IORegistryEntryGetChildIterator(device, kIOServicePlane, &children) == KERN_SUCCESS {
+                while case let child = IOIteratorNext(children), child != 0 {
+                    defer { IOObjectRelease(child) }
+                    if let cls: Int = property(child, "bInterfaceClass") {
+                        if cls == 8 { hasMTPOrStorage = true } // mass storage
+                        if let ref = deviceRef(forInterfaceService: child), !ref.name.isEmpty { hasMTPOrStorage = true }
+                    }
+                }
+                IOObjectRelease(children)
+            }
+            if hasMTPOrStorage { continue }
+            let name: String = property(device, "USB Product Name") ?? "Android device"
+            names.append(name)
+        }
+        return names
     }
 
     private static func property<T>(_ entry: io_registry_entry_t, _ key: String) -> T? {

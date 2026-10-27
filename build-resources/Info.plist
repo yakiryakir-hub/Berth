@@ -7,15 +7,15 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
-	<string>Moorage</string>
+	<string>Berth</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.skylerschoos.moorage</string>
+	<string>com.yakir.berth</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Moorage</string>
+	<string>Berth</string>
 	<key>CFBundleDisplayName</key>
-	<string>Moorage</string>
+	<string>Berth</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,6 +27,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 Skyler Schoos. MIT License.</string>
+	<string>Copyright © 2026 Skyler Schoos (Moorage) and Berth contributors. MIT License.</string>
 </dict>
 </plist>
