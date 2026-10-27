@@ -6,6 +6,10 @@
 
 <p align="center">Your Android phone or tablet as a real Finder volume. Small, fast, silent.</p>
 
+<p align="center">
+  <a href="https://buymeacoffee.com/yakir_flat_white"><img src="https://img.shields.io/badge/Buy_me_a-flat_white-FFDD00?labelColor=172EB0&logo=buymeacoffee&logoColor=white" alt="Buy me a flat white"></a>
+</p>
+
 Berth is a macOS menu bar app that mounts MTP devices (Android phones and tablets, cameras, e-readers) as ordinary Finder volumes under `~/Berth`. Plug in, unlock the device, set USB to **File transfer**, and it appears in Finder. No transfer window, no drivers, no kernel or system extensions.
 
 Berth is a fork of Moorage by Skyler Schoos ([github.com/skuthus/Moorage](https://github.com/skuthus/Moorage), MIT). Moorage's architecture is unchanged: a private in-process WebDAV bridge mounted with macOS's own `mount_webdav`. See [Credits](#credits).
@@ -80,6 +84,10 @@ swift run BerthSelfCheck        # protocol tests, no device needed
 ```
 
 See [docs/DESIGN.md](docs/DESIGN.md) and [docs/PITFALLS.md](docs/PITFALLS.md).
+
+## Support
+
+Berth is free and always will be. If it saves you time, you can [buy me a flat white (triple shot)](https://buymeacoffee.com/yakir_flat_white). Bug reports and device test results are just as welcome.
 
 ## Credits
 
